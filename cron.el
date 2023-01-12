@@ -36,6 +36,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'rx)
 
 (defconst cron--fields-defs
   `((second :range (0 . 59)
@@ -491,6 +492,7 @@ In case a sub-expression cannot be parse, it is returned as 'ERROR"
                         (_ 'ERROR)))
    collect (if (cdr col) col (car col))))
 
+;;;###autoload
 (defun cron-schedule (cron-vec function &rest args)
   "Schedule a FUNCTION call with ARGS for a given cron expression.
 
