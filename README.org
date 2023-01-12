@@ -1,0 +1,41 @@
+#+title: cron.el - A cron emulator for Emacs
+#+author: Al Haji-Ali
+#+language: en
+#+export_file_name: cron.el.texi
+#+texinfo_dir_category: Emacs misc features
+#+texinfo_dir_title: Cron.El: (cron.el).
+#+texinfo_dir_desc: A cron emulator for Emacs
+
+* Introduction
+
+=cron.el= is an emulator of cron for Emacs. It has functionality to schedule
+function calls at specific time points, following a cron expression.
+
+#+CAPTION: Compiling in latex
+[[file:cron.el.gif]]
+
+* Configuration
+You can call the function =cron-schedule= to schedule a function call at
+specific times. For example, the following function call schedules a message
+starting with the third second then every five seconds in the 3rd to 10th
+minute every hour, every day, every month and every year.
+
+#+begin_src emacs-lisp
+  (setq cron-test-timer
+        (cron-schedule "2/5 5-10"
+                       (lambda () (message "%s cron fired"
+                                           (format-time-string "%T %d/%m/%Y")))))
+
+  ;; To cancel the cron timer, simply do
+  (cancel-timer cron-test-timer)
+#+end_src
+
+A cron expression consists of up to 7 parts, ~SECONDS MINUTES HOURS DAY MONTH WEEKDAY YEAR~.
+For example, ~0/5 14,18,20-39,52 * * JAN,MAR,SEP MON-FRI 2002-2050~.
+
+For more complicated cron expressions, see [[https://www.netiq.com/documentation/cloud-manager-2-5/ncm-reference/data/bexyssf.html][here]] for the format.
+
+* Why?
+
+Mostly because I got interested in efficient ways computing cron trigger times
+given an expression. Let me know if you have better methods.
