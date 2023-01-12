@@ -37,5 +37,13 @@ For more complicated cron expressions, see [[https://www.netiq.com/documentation
 
 * Why?
 
-Mostly because I got interested in efficient ways computing cron trigger times
-given an expression. Let me know if you have better methods.
+Mostly because I got interested in efficient ways to compute cron trigger
+times given an expression. Let me know if you have better methods.
+
+With that being said, this package is not meant as a replacement for a
+system's cron. For one thing, the timers will not survive across Emacs
+sessions, nor will they run when Emacs is not running. Also, the cron
+scheduler in this package uses Emacs timers which are triggers when Emacs is
+idle and so accurate triggers at specific times are not guaranteed. The cron
+scheduler may even skip some triggers if Emacs is busy for the the whole
+duration between two or more triggers.
