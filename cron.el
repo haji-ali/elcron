@@ -35,6 +35,7 @@
 ;;
 
 ;;; Code:
+(require 'cl-lib)
 
 (defconst cron--fields-defs
   `((second :range (0 . 59)
@@ -102,7 +103,7 @@ Also checks that X is in the correct range."
                (<= x (cdr range)))
     (user-error "Value outside range")))
 
-(defun ctontab--field-type-p (field-def field-type)
+(defun cron--field-type-p (field-def field-type)
   "Check if the type of FIELD-DEF is equal to FIELD-TYPE."
   (eq (car field-def) field-type))
 
@@ -206,7 +207,7 @@ If the result is less than PREV-TIME, return nil."
       (if (cron--time-less-p prev-time new-time)
           new-time))))
 
-(defun cron--same-or-next/field (time expr field &optional reset-lesser)
+(defun cron--same-or-next-by-field (time expr field &optional reset-lesser)
   "Return the next TIME given an EXPR on FIELD.
 See `cron-same-or-next' for possible expressions.
 FIELD can be one of `cron--fields-defs' or their car's.
@@ -242,14 +243,14 @@ field-def are set to their minimum value."
                                            base
                                          new-value)))))
                  ((or 'L '\#)
-                  (unless (ctontab--field-type-p field-def 'weekday)
+                  (unless (cron--field-type-p field-def 'weekday)
                     (user-error "L/# consp are only accepted for day-of-week"))
                   (let ((weekday (cron--parse-value (cadr expr)
                                                     'weekday))
                         (nth (caddr expr)))
                     (cron--set-day-of-month time weekday nth)))
                  ('W
-                  (unless (ctontab--field-type-p field-def 'day)
+                  (unless (cron--field-type-p field-def 'day)
                     (user-error "W is only accepted for day-of-month"))
                   (if (eq (cadr expr) 'L)
                       (cron--set-day-of-month time 'W nil)
@@ -257,7 +258,7 @@ field-def are set to their minimum value."
                       (cron--set-closest-workday time day))))
                  (_
                   (car (cl-sort (cl-loop for subexp in expr
-                                         for res = (cron--same-or-next/field
+                                         for res = (cron--same-or-next-by-field
                                                     time subexp field-def t)
                                          unless (null res)
                                          collect res)
@@ -267,10 +268,10 @@ field-def are set to their minimum value."
                (cron--set-field time field-def expr))
               ('L
                ;; weekday or day-of-month
-               (unless (or (ctontab--field-type-p field-def 'day)
-                           (ctontab--field-type-p field-def 'weekday))
+               (unless (or (cron--field-type-p field-def 'day)
+                           (cron--field-type-p field-def 'weekday))
                  (user-error "L is only accepted for day-of-month or weekday"))
-               (if (ctontab--field-type-p field-def 'weekday)
+               (if (cron--field-type-p field-def 'weekday)
                    (cron--set-field time field-def 6)
                  (cron--set-day-of-month time nil nil)))
               ((or '* '\?) time) ;; I am not sure why ? is needed instead of *
@@ -298,6 +299,7 @@ of the month."
                      weekday
                    (cron--parse-value weekday 'weekday)))
         cur-month
+        cur-nth
         next-month
         (continue t))
     ;; Last day of the current month
@@ -437,7 +439,7 @@ See `cron-schedule' for format of CRON-VEC."
              with ntime = prev-time
              for def in cron--fields-defs
              for expr in cron-vector
-             do (setq ntime (cron--same-or-next/field ntime expr def t))
+             do (setq ntime (cron--same-or-next-by-field ntime expr def t))
              while ntime
              finally return ntime))
    until (or (null time) (cron--time-equal-p prev-time time))
