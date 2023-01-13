@@ -1,49 +1,46 @@
-#+title: cron.el - A cron emulator for Emacs
+#+title: ecron.el - A cron emulator for Emacs
 #+author: Al Haji-Ali
 #+language: en
-#+export_file_name: cron.el.texi
+#+export_file_name: ecron.el.texi
 #+texinfo_dir_category: Emacs misc features
-#+texinfo_dir_title: Cron.El: (cron.el).
+#+texinfo_dir_title: ecron.el: (ecron.el).
 #+texinfo_dir_desc: A cron emulator for Emacs
 
 * Introduction
 
-=cron.el= is an emulator of cron for Emacs. It has functionality to schedule
-function calls at specific time points, following a cron expression.
-
-#+CAPTION: Compiling in latex
-[[file:cron.el.gif]]
+=ecron.el= is an emulator of cron for Emacs. It has functionality to schedule
+function calls at specific time points, following a cron-like expression.
 
 * Configuration
-You can call the function =cron-schedule= to schedule a function call at
+You can call the function =ecron-schedule= to schedule a function call at
 specific times. For example, the following function call schedules a message
 starting with the third second then every five seconds in the 3rd to 10th
 minute every hour, every day, every month and every year.
 
 #+begin_src emacs-lisp
-  (setq cron-test-timer
-        (cron-schedule "2/5 5-10"
+  (setq ecron-test-timer
+        (ecron-schedule "2/5 5-10"
                        (lambda () (message "%s cron fired"
                                            (format-time-string "%T %d/%m/%Y")))))
 
-  ;; To cancel the cron timer, simply do
-  (cancel-timer cron-test-timer)
+  ;; To cancel the ecron timer, simply do
+  (cancel-timer ecron-test-timer)
 #+end_src
 
-A cron expression consists of up to 7 parts, ~SECONDS MINUTES HOURS DAY MONTH WEEKDAY YEAR~.
+A ecron expression consists of up to 7 parts, ~SECONDS MINUTES HOURS DAY MONTH WEEKDAY YEAR~.
 For example, ~0/5 14,18,20-39,52 * * JAN,MAR,SEP MON-FRI 2002-2050~.
 
-For more complicated cron expressions, see [[https://www.netiq.com/documentation/cloud-manager-2-5/ncm-reference/data/bexyssf.html][here]] for the format.
+For more complicated ecron expressions, see [[https://www.netiq.com/documentation/cloud-manager-2-5/ncm-reference/data/bexyssf.html][here]] for the format.
 
 * Why?
 
-Mostly because I got interested in efficient ways to compute cron trigger
+Mostly because I got interested in efficient ways to compute ecron trigger
 times given an expression. Let me know if you have better methods.
 
-With that being said, this package is not meant as a replacement for a
-system's cron. For one thing, the timers will not survive across Emacs
-sessions, nor will they run when Emacs is not running. Also, the cron
-scheduler in this package uses Emacs timers which are triggers when Emacs is
-idle and so accurate triggers at specific times are not guaranteed. The cron
-scheduler may even skip some triggers if Emacs is busy for the the whole
-duration between two or more triggers.
+With that being said, =ecron.el= is not meant as a replacement for a system's
+cron. For one thing, =ecron.el= timers will not survive across Emacs sessions,
+nor will they run when Emacs is not running. Also, =ecron.el= uses Emacs
+timers which are triggers when Emacs is idle and so accurate triggers at
+specific times are not guaranteed. The =ecron.el= scheduler may even skip some
+triggers if Emacs is busy for the the whole duration between two or more
+triggers.

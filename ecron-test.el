@@ -1,7 +1,7 @@
-;;; cron-text.el --- Unit-tests for cron.el  -*- lexical-binding:t -*-
+;;; ecron-test.el --- Unit-tests for ecron.el  -*- lexical-binding:t -*-
 ;;
 ;; Author: Al Haji-Ali <abdo.haji.ali@gmail.com>
-;; URL: https://github.com/haji-ali/cron.el.git
+;; URL: https://github.com/haji-ali/ecron.el.git
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: convenience
@@ -22,26 +22,26 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ;;
 
-(require 'cron)
+(require 'ecron)
 
-(ert "cron-.*")
+(ert "ecron-.*")
 
-(ert-deftest cron-test-parser ()
+(ert-deftest ecron-test-parser ()
   (should (equal
-           (cron-parse "0 0/5 14,18,3-39,52 * JAN,MAR,SEP MON-FRI 2002-2011 LW")
+           (ecron-parse "0 0/5 14,18,3-39,52 * JAN,MAR,SEP MON-FRI 2002-2011 LW")
            '(0 (/ 0 5) (14 18 (- 3 39) 52) * (jan mar sep)
                (- mon fri) (- 2002 2011) (W L))))
 
   (should (equal
-           (cron-parse "L 3L 3W */3 2#2 ? W LW")
+           (ecron-parse "L 3L 3W */3 2#2 ? W LW")
            '(L (L 3) (W 3) (/ nil 3) (\# 2 2) \? ERROR (W L)))))
 
-(ert-deftest cron-test-next ()
+(ert-deftest ecron-test-next ()
   (cl-flet* ((check (x y &optional time)
                     (let* ((time (or time '(9 12 18 11 1 2023 3 nil 0)))
-                           (res (cron-same-or-next time x)))
+                           (res (ecron-same-or-next time x)))
                       (and (equal (butlast res 3) y)
-                           (equal (butlast (cron-same-or-next res x) 3) y)))))
+                           (equal (butlast (ecron-same-or-next res x) 3) y)))))
     (should (check '(0) '(0 13 18 11 1 2023)))
     (should (check '(0 0) '(0 0 19 11 1 2023)))
     (should (check '(3 0 3) '(3 0 3 12 1 2023)))

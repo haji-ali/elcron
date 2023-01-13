@@ -1,7 +1,7 @@
-;;; cron.el --- A utility library for cron-like parsing and scheduling  -*- lexical-binding:t -*-
+;;; ecron.el --- A utility library for ecron-like parsing and scheduling  -*- lexical-binding:t -*-
 ;;
 ;; Author: Al Haji-Ali <abdo.haji.ali@gmail.com>
-;; URL: https://github.com/haji-ali/cron.el.git
+;; URL: https://github.com/haji-ali/ecron.el.git
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: convenience
@@ -23,13 +23,13 @@
 ;;
 ;;; Commentary:
 ;; This package provides a simple functionality to emulate the cron
-;; scheduler in Emacs.
+;; scheduler in Emacs, using Emacs timers.
 ;;
 ;; Typical usage:
 ;;
-;; (require 'cron)
+;; (require 'ecron)
 ;;
-;; (cron-schedule
+;; (ecron-schedule
 ;;    "0/5 14,18,20-39,52 * * JAN,MAR,SEP MON-FRI 2002-2050"
 ;;    'my-function my-args)
 ;;
@@ -38,7 +38,7 @@
 (require 'cl-lib)
 (require 'rx)
 
-(defconst cron--fields-defs
+(defconst ecron--fields-defs
   `((second :range (0 . 59)
             :to-seconds 1
             :getter decoded-time-second)
@@ -69,8 +69,8 @@
           :reset  month
           :non-cyclic t
           :getter decoded-time-year))
-  "List of cron field definitions.
-Each element in the list defines a cron field with the
+  "List of ecron field definitions.
+Each element in the list defines a ecron field with the
 following properties:
 - `:range' Range of acceptable values.
 - `:to-seconds' Number of seconds in a single increment of the
@@ -84,71 +84,71 @@ structure.
 - `:non-cyclic' if non-nil means that the field is not periodic
 \(like a year).")
 
-(defun cron--parse-value (x field-def)
+(defun ecron--parse-value (x field-def)
   "Parse value X according to FIELD-DEF.
 Also checks that X is in the correct range."
-  (let* ((field-def (cron--field-def field-def))
-         (vals (cron--field-prop field-def :values))
-         (range (cron--field-prop field-def :range))
+  (let* ((field-def (ecron--field-def field-def))
+         (vals (ecron--field-prop field-def :values))
+         (range (ecron--field-prop field-def :range))
          pos)
     (if (and vals
              (setq pos (cl-position x vals)))
         (+ pos (car range))
-      (cron--check-range x range)
+      (ecron--check-range x range)
       x)))
 
-(defun cron--check-range (x range)
+(defun ecron--check-range (x range)
   "Check that X is a number and falls within RANGE."
   (unless (and (numberp x)
                (>= x (car range))
                (<= x (cdr range)))
     (user-error "Value outside range")))
 
-(defun cron--field-type-p (field-def field-type)
+(defun ecron--field-type-p (field-def field-type)
   "Check if the type of FIELD-DEF is equal to FIELD-TYPE."
   (eq (car field-def) field-type))
 
-(defun cron--time-add (decoded-time val &optional units)
+(defun ecron--time-add (decoded-time val &optional units)
   "Add VAL seconds to a DECODED-TIME structure.
 Similar to `decoded-time-add' except that it updates the weekday
 and does not have the warning \"obsolete timestamp with cdr 1\".
 Also, if UNITS is non-nil it can be one from
-`cron--fields-defs' to specify a unit different from seconds."
+`ecron--fields-defs' to specify a unit different from seconds."
   (when units
-    (setq units (cron--field-def units))
-    (setq val (* val (cron--field-prop units :to-seconds))))
+    (setq units (ecron--field-def units))
+    (setq val (* val (ecron--field-prop units :to-seconds))))
   (decode-time (time-add (encode-time decoded-time) val)))
 
-(defun cron--time-equal-p (A B)
+(defun ecron--time-equal-p (A B)
   "Return non-nil if A and B are equal time values.
 Similar to `time-equal-p' except that it works for decoded times."
   (time-equal-p (encode-time A) (encode-time B)))
 
-(defun cron--time-less-p (A B)
+(defun ecron--time-less-p (A B)
   "Return non-nil if time value A is less than time value B.
 Similar to `time-less-p' except that it works for decoded times."
   (time-less-p (encode-time A) (encode-time B)))
 
-(defun cron--field-def (field)
+(defun ecron--field-def (field)
   "Get FIELD definition.
-See `cron--fields-defs' for a list of definitions. If FIELD is
+See `ecron--fields-defs' for a list of definitions. If FIELD is
 already a definition simply return it."
   (if (consp field)
       field
-    (cons field (alist-get field cron--fields-defs))))
+    (cons field (alist-get field ecron--fields-defs))))
 
-(defun crontab--too-late-p (time orig-time)
+(defun ecron--too-late-p (time orig-time)
   "Return t if TIME is significantly after than ORIG-TIME.
 Returns nil if there is less than 10 years between the arguments."
   (> (- (decoded-time-year time)
         (decoded-time-year orig-time))
      10))
 
-(defun cron--field-prop (field-def key)
+(defun ecron--field-prop (field-def key)
   "Get property corresponding to KEY from FIELD-DEF."
   (plist-get (cdr field-def) key))
 
-(defun cron--set-field (time field
+(defun ecron--set-field (time field
                              new-value
                              &optional
                              accept-past)
@@ -156,11 +156,11 @@ Returns nil if there is less than 10 years between the arguments."
 This is done by advancing time until the value of FIELD is
 correct. If ACCEPT-PAST is non-nil then the result could be in
 the past."
-  (let* ((field-def (cron--field-def field))
-         (getter (cron--field-prop field-def :getter))
-         (range (cron--field-prop field-def :range))
-         (to-seconds (cron--field-prop field-def :to-seconds))
-         (new-value (cron--parse-value new-value field-def))
+  (let* ((field-def (ecron--field-def field))
+         (getter (ecron--field-prop field-def :getter))
+         (range (ecron--field-prop field-def :range))
+         (to-seconds (ecron--field-prop field-def :to-seconds))
+         (new-value (ecron--parse-value new-value field-def))
          (orig-time time)
          old-value)
     (cl-loop
@@ -168,74 +168,74 @@ the past."
                 (not (eq
                       (setq old-value (funcall getter time))
                       new-value)))
-     never (crontab--too-late-p time orig-time)
+     never (ecron--too-late-p time orig-time)
      do (if (or accept-past
                 (< old-value new-value))
             ;; Simply advance time
             (setq time
-                  (cron--time-add time (* (- new-value old-value) to-seconds)))
+                  (ecron--time-add time (* (- new-value old-value) to-seconds)))
           ;; Otherwise, we need to advance to "next-cycle"
           ;; (next minute, next hour ... etc)
 
           (setq time
-                (unless (cron--field-prop field-def :non-cyclic)
-                  (let ((next-cycle (or (cron--field-prop field-def :next-cycle)
+                (unless (ecron--field-prop field-def :non-cyclic)
+                  (let ((next-cycle (or (ecron--field-prop field-def :next-cycle)
                                         (* (1+ (- (cdr range) (car range))) to-seconds))))
-                    (cron--time-add time
+                    (ecron--time-add time
                                     (+
                                      next-cycle
                                      (* to-seconds (- new-value old-value))))))))
      finally return time)))
 
-(defun cron--reset-field-maybe (time prev-time field
+(defun ecron--reset-field-maybe (time prev-time field
                                      &optional no-recurse)
   "Set FIELD in TIME to it's minimum value if the result is after PREV-TIME.
 If the result is less than PREV-TIME, return nil."
-  (let ((field-def (cron--field-def field))
+  (let ((field-def (ecron--field-def field))
         new-time)
-    (when (and (cron--field-prop field-def :reset) (not no-recurse))
+    (when (and (ecron--field-prop field-def :reset) (not no-recurse))
       ;; First try to reset the lesser field
-      (setq time (cron--reset-field-maybe
+      (setq time (ecron--reset-field-maybe
                   time prev-time
-                  (cron--field-def (cron--field-prop field-def :reset)))))
+                  (ecron--field-def (ecron--field-prop field-def :reset)))))
     (when time
-      (setq new-time (cron--set-field
+      (setq new-time (ecron--set-field
                       time
                       field-def
                       ;; set to minimum
-                      (car (cron--field-prop field-def :range))
+                      (car (ecron--field-prop field-def :range))
                       t))
-      (if (cron--time-less-p prev-time new-time)
+      (if (ecron--time-less-p prev-time new-time)
           new-time))))
 
-(defun cron--same-or-next-by-field (time expr field &optional reset-lesser)
+(defun ecron--same-or-next-by-field (time expr field &optional reset-lesser)
   "Return the next TIME given an EXPR on FIELD.
-See `cron-same-or-next' for possible expressions.
-FIELD can be one of `cron--fields-defs' or their car's.
+See `ecron-same-or-next' for possible expressions.
+FIELD can be one of `ecron--fields-defs' or their car's.
 if RESET-LESSER is non-nil, all fields which are finer than
 field-def are set to their minimum value."
   ;; https://www.netiq.com/documentation/cloud-manager-2-5/ncm-reference/data/bexyssf.html
   (let ((next-time)
-        (field-def (cron--field-def field)))
+        (field-def (ecron--field-def field)))
     (setq next-time
-          (let* ((range (cron--field-prop field-def :range))
-                 (vals (cron--field-prop field-def :values))
-                 (n (funcall (cron--field-prop field-def :getter) time)))
+          (let* ((range (ecron--field-prop field-def :range))
+                 (vals (ecron--field-prop field-def :values))
+                 (n (funcall (ecron--field-prop field-def :getter) time)))
             (pcase expr
               ((pred consp)
                (pcase (car expr)
                  ('-
-                  (let ((from (cron--parse-value (cadr expr) field-def))
-                        (to (cron--parse-value (caddr expr) field-def)))
+                  (let ((from (ecron--parse-value (cadr expr) field-def))
+                        (to (ecron--parse-value (caddr expr) field-def)))
                     (if (and (>= n from) (<= n to))
                         ;; Time in between from and to
                         time
-                      (cron--set-field time field-def from))))
+                      (ecron--set-field time field-def from))))
                  ('/
-                  (let ((base (cron--parse-value (cadr expr) field-def))
+                  (let ((base (ecron--parse-value (cadr expr) field-def))
                         (period (caddr expr)))
-                    (cron--check-range period range)
-                    (cron--set-field time field-def
+                    (ecron--check-range period range)
+                    (ecron--set-field time field-def
                                      (let ((new-value (+ base
                                                          (* (/ (+ (- n base)
                                                                   (1- period))
@@ -244,50 +244,50 @@ field-def are set to their minimum value."
                                            base
                                          new-value)))))
                  ((or 'L '\#)
-                  (unless (cron--field-type-p field-def 'weekday)
+                  (unless (ecron--field-type-p field-def 'weekday)
                     (user-error "L/# consp are only accepted for day-of-week"))
-                  (let ((weekday (cron--parse-value (cadr expr)
+                  (let ((weekday (ecron--parse-value (cadr expr)
                                                     'weekday))
                         (nth (caddr expr)))
-                    (cron--set-day-of-month time weekday nth)))
+                    (ecron--set-day-of-month time weekday nth)))
                  ('W
-                  (unless (cron--field-type-p field-def 'day)
+                  (unless (ecron--field-type-p field-def 'day)
                     (user-error "W is only accepted for day-of-month"))
                   (if (eq (cadr expr) 'L)
-                      (cron--set-day-of-month time 'W nil)
-                    (let ((day (cron--parse-value (cadr expr) field-def)))
-                      (cron--set-closest-workday time day))))
+                      (ecron--set-day-of-month time 'W nil)
+                    (let ((day (ecron--parse-value (cadr expr) field-def)))
+                      (ecron--set-closest-workday time day))))
                  (_
                   (car (cl-sort (cl-loop for subexp in expr
-                                         for res = (cron--same-or-next-by-field
+                                         for res = (ecron--same-or-next-by-field
                                                     time subexp field-def t)
                                          unless (null res)
                                          collect res)
-                                #'cron--time-less-p)))))
+                                #'ecron--time-less-p)))))
               ((guard (or (numberp expr)
                           (memq expr vals)))
-               (cron--set-field time field-def expr))
+               (ecron--set-field time field-def expr))
               ('L
                ;; weekday or day-of-month
-               (unless (or (cron--field-type-p field-def 'day)
-                           (cron--field-type-p field-def 'weekday))
+               (unless (or (ecron--field-type-p field-def 'day)
+                           (ecron--field-type-p field-def 'weekday))
                  (user-error "L is only accepted for day-of-month or weekday"))
-               (if (cron--field-type-p field-def 'weekday)
-                   (cron--set-field time field-def 6)
-                 (cron--set-day-of-month time nil nil)))
+               (if (ecron--field-type-p field-def 'weekday)
+                   (ecron--set-field time field-def 6)
+                 (ecron--set-day-of-month time nil nil)))
               ((or '* '\?) time) ;; I am not sure why ? is needed instead of *
               (_ (user-error "Unknown expression")))))
     (if (or (null next-time)
-            (cron--time-equal-p next-time time)
+            (ecron--time-equal-p next-time time)
             (not reset-lesser))
         next-time
       ;; We've advanced the time, try to reset the other fields
-      (or (when-let (reset (cron--field-prop field-def :reset))
-            (cron--reset-field-maybe next-time time
-                                     (cron--field-def reset)))
+      (or (when-let (reset (ecron--field-prop field-def :reset))
+            (ecron--reset-field-maybe next-time time
+                                     (ecron--field-def reset)))
           next-time))))
 
-(defun cron--set-day-of-month (time weekday nth)
+(defun ecron--set-day-of-month (time weekday nth)
   "Set day of the month in TIME to WEEKDAY.
 If NTH is non-nil, set day to the n'th weekday of the month.
 Otherwise, set to last. If WEEKDAY is 'W, then set the day to
@@ -298,7 +298,7 @@ of the month."
         (weekday (if (or (null weekday)
                          (eq weekday 'W))
                      weekday
-                   (cron--parse-value weekday 'weekday)))
+                   (ecron--parse-value weekday 'weekday)))
         cur-month
         cur-nth
         next-month
@@ -306,17 +306,17 @@ of the month."
     ;; Last day of the current month
     (cl-loop
      while continue
-     never (crontab--too-late-p time orig-time)
+     never (ecron--too-late-p time orig-time)
      do (progn
           (setq continue nil)
           (setq cur-month (decoded-time-month time))
           (setq next-month
-                (cron--reset-field-maybe
-                 (cron--set-field time 'month
+                (ecron--reset-field-maybe
+                 (ecron--set-field time 'month
                                   (1+ (mod cur-month 12)))
                  time
                  'day))
-          (setq time (cron--time-add next-month -1 'day))
+          (setq time (ecron--time-add next-month -1 'day))
           (when weekday
             (let* ((cur (decoded-time-weekday time))
                    (wanted (or (and (eq weekday 'W)
@@ -325,7 +325,7 @@ of the month."
               (unless (eq cur wanted)
                 ;; Otherwise go backward to last day in days-of-week
                 (setq time
-                      (cron--time-add
+                      (ecron--time-add
                        time
                        (- wanted cur (if (> wanted cur) 7 0))
                        'day)))))
@@ -338,18 +338,18 @@ of the month."
                   (setq continue t
                         time next-month)
                 (setq time
-                      (cron--time-add time (* (- nth cur-nth) 7) 'day))
+                      (ecron--time-add time (* (- nth cur-nth) 7) 'day))
                 (if (and (eq (decoded-time-month time) (decoded-time-month orig-time))
                          (eq (decoded-time-day time) (decoded-time-day orig-time))
                          (eq (decoded-time-year time) (decoded-time-year orig-time)))
                     (setq time orig-time)
-                  (when (setq continue (cron--time-less-p time orig-time))
+                  (when (setq continue (ecron--time-less-p time orig-time))
                     ;; Advance to next month and repeat process
                     (setq continue t
                           time next-month)))))))
      finally return time)))
 
-(defun cron--set-closest-workday (time day-of-month)
+(defun ecron--set-closest-workday (time day-of-month)
   "Find closest workday to DAY-OF-MONTH to TIME.
 If day-of-month is a workday, set it to that day. Otherwise, find
 the closest future workday within the current month is possible
@@ -386,15 +386,15 @@ day to last workday of month."
               ))
       (cl-loop
        while continue
-       never (crontab--too-late-p time orig-time)
+       never (ecron--too-late-p time orig-time)
        do (progn
             (setq continue nil
-                  time (cron--set-field time 'day day-of-month))
+                  time (ecron--set-field time 'day day-of-month))
             (let* ((cur-weekday (decoded-time-weekday time))
                    (cur-day (decoded-time-day time)))
               (when (memq cur-weekday '(0 6))
                 (setq temp time
-                      time (cron--time-add
+                      time (ecron--time-add
                             time
                             (if  (eq cur-weekday 0) ;; Sunday
                                 1 ;; Always advance
@@ -408,46 +408,46 @@ day to last workday of month."
                 ;; day of the month, then we should go back to Friday
                 (if (not (eq (decoded-time-month time)
                              (decoded-time-month temp)))
-                    (setq time (cron--time-add time -1 'day)))
+                    (setq time (ecron--time-add time -1 'day)))
 
-                (when (cron--time-less-p time orig-time)
+                (when (ecron--time-less-p time orig-time)
                   (setq
                    continue t
-                   time (cron--set-field
+                   time (ecron--set-field
                          time
                          'month
                          (1+ (mod (decoded-time-month time) 12))))))))))
     (when time
-      (if (cron--time-equal-p time orig-time)
+      (if (ecron--time-equal-p time orig-time)
           orig-time
-        (cron--reset-field-maybe
+        (ecron--reset-field-maybe
          time
          orig-time
          'hour)))))
 
-(defun cron-same-or-next (time cron-vec)
-  "Find the next trigger after TIME for a cron expression.
+(defun ecron-same-or-next (time ecron-vec)
+  "Find the next trigger after TIME for a ecron expression.
 Or returns TIME if the event should be triggered then.
-See `cron-schedule' for format of CRON-VEC."
+See `ecron-schedule' for format of ECRON-VEC."
   (cl-loop
-   with cron-vector = (if (stringp cron-vec)
-                          (cron-parse cron-vec)
-                        cron-vec)
+   with ecron-vector = (if (stringp ecron-vec)
+                          (ecron-parse ecron-vec)
+                        ecron-vec)
    with prev-time = time
    do (setq
        prev-time time
        time (cl-loop
              with ntime = prev-time
-             for def in cron--fields-defs
-             for expr in cron-vector
-             do (setq ntime (cron--same-or-next-by-field ntime expr def t))
+             for def in ecron--fields-defs
+             for expr in ecron-vector
+             do (setq ntime (ecron--same-or-next-by-field ntime expr def t))
              while ntime
              finally return ntime))
-   until (or (null time) (cron--time-equal-p prev-time time))
+   until (or (null time) (ecron--time-equal-p prev-time time))
    finally return time))
 
-(defun cron-parse (expression)
-  "Parse a standard cron string EXPRESSION to Lisp expression.
+(defun ecron-parse (expression)
+  "Parse a standard ecron string EXPRESSION to Lisp expression.
 
 The parser is a dump one so limited syntax checks are performed.
 In case a sub-expression cannot be parse, it is returned as 'ERROR"
@@ -493,10 +493,10 @@ In case a sub-expression cannot be parse, it is returned as 'ERROR"
    collect (if (cdr col) col (car col))))
 
 ;;;###autoload
-(defun cron-schedule (cron-vec function &rest args)
-  "Schedule a FUNCTION call with ARGS for a given cron expression.
+(defun ecron-schedule (ecron-vec function &rest args)
+  "Schedule a FUNCTION call with ARGS for a given ecron expression.
 
-CRON-VEC is a list or vector of up to 7 elements
+ECRON-VEC is a list or vector of up to 7 elements
 \(SECONDS MINUTES HOURS DAY-OF-MONTH MONTH WEEKDAY YEAR).
 
 Acceptable values are:
@@ -520,33 +520,33 @@ WEEKDAY can be:
 - L: For Saturday.
 - (P weekday): For the last weekday in a month.
 - (P weekday nth): For the nth weekday in a month."
-  (let ((cron-vector (if (stringp cron-vec)
-                         (cron-parse cron-vec)
-                       cron-vec))
+  (let ((ecron-vector (if (stringp ecron-vec)
+                         (ecron-parse ecron-vec)
+                       ecron-vec))
         (timer (timer-create)))
     (timer-set-function timer
-                        #'cron--event-handler
-                        (list timer cron-vector function args))
-    (and (cron--schedule-next timer cron-vector)
+                        #'ecron--event-handler
+                        (list timer ecron-vector function args))
+    (and (ecron--schedule-next timer ecron-vector)
          timer)))
 
-(defun cron--schedule-next (timer cron-vec)
-  "Set trigger time of TIMER on the next trigger of CRON-VEC."
-  (when-let (next-time (cron-same-or-next
+(defun ecron--schedule-next (timer ecron-vec)
+  "Set trigger time of TIMER on the next trigger of ECRON-VEC."
+  (when-let (next-time (ecron-same-or-next
                         ;; Resolution is at least a second
                         (decode-time (time-add (current-time) 1))
-                        cron-vec))
+                        ecron-vec))
     (timer-set-time timer (encode-time next-time) nil)
     (timer-activate timer)))
 
-(defun cron--event-handler (timer cron-vec function args)
-  "Cron timer handler.
+(defun ecron--event-handler (timer ecron-vec function args)
+  "Event handler for ecron timers.
 Calls FUNCTION with ARGS and schedules the next tigger of TIMER
-according to CRON-VEC."
+according to ECRON-VEC."
   (unwind-protect
       (apply function args)
-    (cron--schedule-next timer cron-vec)))
+    (ecron--schedule-next timer ecron-vec)))
 
-(provide 'cron)
+(provide 'ecron)
 
-;;; cron.el ends here
+;;; ecron.el ends here
