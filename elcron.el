@@ -84,6 +84,10 @@ structure.
 - `:non-cyclic' if non-nil means that the field is not periodic
 \(like a year).")
 
+(defvar elcron--log-buffer nil
+  "A buffer to log elcron events.
+nil means disable logging.")
+
 (defun elcron--parse-value (x field-def)
   "Parse value X according to FIELD-DEF.
 Also checks that X is in the correct range."
@@ -427,35 +431,35 @@ day to last workday of month."
          orig-time
          'hour)))))
 
+(defun elcron--normalize (elcron-vec)
+  (pcase elcron-vec
+    ((pred stringp) (elcron-parse elcron-vec))
+    ((pred listp) (elcron--plist-to-vector
+                   elcron-vec
+                   (cl-loop
+                    for def in elcron--fields-defs
+                    collect (intern
+                             (format ":%S"
+                                     (car def))))))
+    (_ elcron-vec)))
+
 (defun elcron-same-or-next (time elcron-vec)
   "Find the next trigger after TIME for a elcron expression.
 Or returns TIME if the event should be triggered then.
 See `elcron-schedule' for format of ELCRON-VEC."
   (cl-loop
-   with elcron-vector = (if (stringp elcron-vec)
-                            (elcron-parse elcron-vec)
-                          elcron-vec)
+   with elcron-vector = (elcron--normalize elcron-vec)
    with prev-time = time
    do (setq
        prev-time time
-       time (if (vectorp elcron-vector)
-                (cl-loop
-                 with ntime = prev-time
-                 for def in elcron--fields-defs
-                 for expr being the elements of elcron-vector
-                 when expr
-                 do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
-                 while ntime
-                 finally return ntime)
-              (cl-loop
-               with ntime = prev-time
-               for def in elcron--fields-defs
-               for expr = (plist-get elcron-vector
-                                     (intern (format ":%S" (car def))))
-               when expr
-               do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
-               while ntime
-               finally return ntime)))
+       time (cl-loop
+             with ntime = prev-time
+             for def in elcron--fields-defs
+             for expr being the elements of elcron-vector
+             when expr
+             do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
+             while ntime
+             finally return ntime))
    until (or (null time) (elcron--time-equal-p prev-time time))
    finally return time))
 
@@ -539,9 +543,7 @@ WEEKDAY can be:
 - L: For Saturday.
 - (# weekday): For the last weekday in a month.
 - (# weekday nth): For the nth weekday in a month."
-  (let ((elcron-vector (if (stringp elcron-vec)
-                         (elcron-parse elcron-vec)
-                       elcron-vec))
+  (let ((elcron-vector (elcron--normalize elcron-vec))
         (timer (timer-create)))
     (timer-set-function timer
                         #'elcron--event-handler
@@ -549,28 +551,68 @@ WEEKDAY can be:
     (and (elcron--schedule-next timer elcron-vector)
          timer)))
 
-(defun elcron--check-plist (keys &optional unique)
-  ;; TODO
-  )
+(defun elcron--plist-to-vector (plist keys)
+  "Convert PLIST with KEYS to a vector."
+  (let ((plist (copy-sequence plist)))
+    (prog1 (cl-loop
+            with result = (make-vector (length keys) nil)
+            for key being the elements of keys using (index j)
+            for found = (cl-member key plist)
+            when found
+            do (progn
+                 (aset result j (cadr found))
+                 (setf (car found) nil
+                       (cadr found) nil)
+                 (when (cl-member key plist)
+                   (user-error "Duplicate keys in plist")))
+            finally return result)
+      (when (cl-notevery #'null plist)
+        (user-error "Unrecognized keys in plist")))))
 
 (defun elcron--schedule-next (timer elcron-vec)
   "Set trigger time of TIMER on the next trigger of ELCRON-VEC."
-  (when-let (next-time (elcron-same-or-next
-                        ;; Resolution is at least a second
-                        (decode-time (time-add (current-time) 1))
-                        elcron-vec))
-    (setq next-time (encode-time next-time))
-    (unless (eq (timer--time timer) next-time)
-      (cancel-timer timer) ;; In case it was active before
-      (timer-set-time timer next-time nil)
-      (timer-activate timer)
-      t)))
+  ;; TODO: Is there a risk that it won't work?
+  (when (cl-every #'null elcron-vec)
+    (with-current-buffer (get-buffer-create elcron--log-buffer)
+      (goto-char (point-max))
+      (insert "TIMER: %S" timer)
+      (insert (with-temp-buffer
+                (let ((standard-output (current-buffer)))
+                  (backtrace)
+                  (buffer-string))))))
+
+  (let ((cur-time (decode-time (time-add (current-time) 1)))
+        (elcron-vec (elcron--normalize elcron-vec)))
+    (when-let (next-time (elcron-same-or-next
+                          ;; Resolution is at least a second
+                          cur-time
+                          elcron-vec))
+      (when elcron--log-buffer
+        (with-current-buffer (get-buffer-create elcron--log-buffer)
+          (goto-char (point-max))
+          (insert (format
+                   "%s Setting timer: %S -> %S ==== %S\n" (format-time-string "%d/%m/%Y %T")
+                   elcron-vec
+                   cur-time
+                   next-time))))
+      (setq next-time (encode-time next-time))
+      (unless (eq (timer--time timer) next-time)
+        (cancel-timer timer) ;; In case it was active before
+        (timer-set-time timer next-time nil)
+        (timer-activate timer)
+        t))))
 
 (defun elcron--event-handler (timer elcron-vec function args)
   "Event handler for elcron timers.
 Calls FUNCTION with ARGS and schedules the next tigger of TIMER
 according to ELCRON-VEC."
   (unwind-protect
+      (when elcron--log-buffer
+        (with-current-buffer (get-buffer-create elcron--log-buffer)
+        (goto-char (point-max))
+        (insert (format
+                 "%s elcron fired: %S\n" (format-time-string "%d/%m/%Y %T")
+                 function))))
       (apply function args)
     (elcron--schedule-next timer elcron-vec)))
 
