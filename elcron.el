@@ -443,6 +443,7 @@ See `elcron-schedule' for format of ELCRON-VEC."
                  with ntime = prev-time
                  for def in elcron--fields-defs
                  for expr being the elements of elcron-vector
+                 when expr
                  do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
                  while ntime
                  finally return ntime)
@@ -547,6 +548,10 @@ WEEKDAY can be:
                         (list timer elcron-vector function args))
     (and (elcron--schedule-next timer elcron-vector)
          timer)))
+
+(defun elcron--check-plist (keys &optional unique)
+  ;; TODO
+  )
 
 (defun elcron--schedule-next (timer elcron-vec)
   "Set trigger time of TIMER on the next trigger of ELCRON-VEC."
