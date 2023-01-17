@@ -24,17 +24,18 @@
 
 ;;; Code:
 
+(require 'ert)
 (require 'elcron)
 
 (ert-deftest elcron-test-parser ()
   (should (equal
            (elcron-parse "0 0/5 14,18,3-39,52 * JAN,MAR,SEP MON-FRI 2002-2011 LW")
-           '(0 (/ 0 5) (14 18 (- 3 39) 52) * (jan mar sep)
-               (- mon fri) (- 2002 2011) (W L))))
+           '[0 (/ 0 5) (14 18 (- 3 39) 52) * (jan mar sep)
+               (- mon fri) (- 2002 2011) (W L)]))
 
   (should (equal
            (elcron-parse "L 3L 3W */3 2#2 ? W LW")
-           '(L (L 3) (W 3) (/ nil 3) (\# 2 2) \? ERROR (W L)))))
+           '[L (L 3) (W 3) (/ nil 3) (\# 2 2) \? ERROR (W L)])))
 
 (ert-deftest elcron-test-next ()
   (cl-flet* ((check (x y &optional time)
@@ -42,19 +43,19 @@
                            (res (elcron-same-or-next time x)))
                       (and (equal (butlast res 3) y)
                            (equal (butlast (elcron-same-or-next res x) 3) y)))))
-    (should (check '(0) '(0 13 18 11 1 2023)))
-    (should (check '(0 0) '(0 0 19 11 1 2023)))
-    (should (check '(3 0 3) '(3 0 3 12 1 2023)))
-    (should (check '(* * * * 3 tue) '(0 0 0 7 3 2023)))
-    (should (check '(* * * L * *) '(0 0 0 31 1 2023)))
-    (should (check '(* * * * * (L fri)) '(0 0 0 27 1 2023)))
-    (should (check '(* * * * * (\# fri 1)) '(0 0 0 3 2 2023)))
-    (should (check '(* * * * * (\# fri 2)) '(0 0 0 13 1 2023)))
-    (should (check '(* * * (W 14) * *) '(0 0 0 13 1 2023)))
-    (should (check '(* * * (W L) * *) '(0 0 0 31 1 2023)))
-    (should (check '(* * * (W L) * *) '(0 0 0 28 4 2023)
+    (should (check '[0] '(0 13 18 11 1 2023)))
+    (should (check '[0 0] '(0 0 19 11 1 2023)))
+    (should (check '[3 0 3] '(3 0 3 12 1 2023)))
+    (should (check '[* * * * 3 tue] '(0 0 0 7 3 2023)))
+    (should (check '[* * * L * *] '(0 0 0 31 1 2023)))
+    (should (check '[* * * * * (L fri)] '(0 0 0 27 1 2023)))
+    (should (check '[* * * * * (\# fri 1)] '(0 0 0 3 2 2023)))
+    (should (check '[* * * * * (\# fri 2)] '(0 0 0 13 1 2023)))
+    (should (check '[* * * (W 14) * *] '(0 0 0 13 1 2023)))
+    (should (check '[* * * (W L) * *] '(0 0 0 31 1 2023)))
+    (should (check '[* * * (W L) * *] '(0 0 0 28 4 2023)
                    '(9 12 18 11 4 2023 3 nil 0)))
-    (should (check '(* * * (W 15) * *) '(0 0 0 16 1 2023)))
+    (should (check '[* * * (W 15) * *] '(0 0 0 16 1 2023)))
     (should (check
              "0/5 14,18,20-39,52 * * JAN,MAR,SEP MON-FRI 2002-2050"
              '(0 14 18 11 1 2023)))))

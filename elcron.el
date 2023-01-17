@@ -232,7 +232,9 @@ field-def are set to their minimum value."
                         time
                       (elcron--set-field time field-def from))))
                  ('/
-                  (let ((base (elcron--parse-value (cadr expr) field-def))
+                  (let ((base (if (eq (cadr expr) '*) ;; If *, return min
+                                  (car (elcron--field-prop field-def :range))
+                                (elcron--parse-value (cadr expr) field-def)))
                         (period (caddr expr)))
                     (elcron--check-range period range)
                     (elcron--set-field time field-def
@@ -431,18 +433,28 @@ Or returns TIME if the event should be triggered then.
 See `elcron-schedule' for format of ELCRON-VEC."
   (cl-loop
    with elcron-vector = (if (stringp elcron-vec)
-                          (elcron-parse elcron-vec)
-                        elcron-vec)
+                            (elcron-parse elcron-vec)
+                          elcron-vec)
    with prev-time = time
    do (setq
        prev-time time
-       time (cl-loop
-             with ntime = prev-time
-             for def in elcron--fields-defs
-             for expr in elcron-vector
-             do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
-             while ntime
-             finally return ntime))
+       time (if (vectorp elcron-vector)
+                (cl-loop
+                 with ntime = prev-time
+                 for def in elcron--fields-defs
+                 for expr being the elements of elcron-vector
+                 do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
+                 while ntime
+                 finally return ntime)
+              (cl-loop
+               with ntime = prev-time
+               for def in elcron--fields-defs
+               for expr = (plist-get elcron-vector
+                                     (intern (format ":%S" (car def))))
+               when expr
+               do (setq ntime (elcron--same-or-next-by-field ntime expr def t))
+               while ntime
+               finally return ntime)))
    until (or (null time) (elcron--time-equal-p prev-time time))
    finally return time))
 
@@ -452,7 +464,9 @@ See `elcron-schedule' for format of ELCRON-VEC."
 The parser is a dump one so limited syntax checks are performed.
 In case a sub-expression cannot be parse, it is returned as 'ERROR"
   (cl-loop
-   for subexpr in (split-string expression " ")
+   with expres = (split-string expression " ")
+   for subexpr being the elements of expres using (index j)
+   with result = (make-vector (length expres) nil)
    for col = (cl-loop
               for expr in (split-string subexpr ",")
               collect (pcase expr
@@ -490,24 +504,28 @@ In case a sub-expression cannot be parse, it is returned as 'ERROR"
                                (or (and num-1 (string-to-number num-1))
                                    (and str-1 (intern (downcase str-1))))))
                         (_ 'ERROR)))
-   collect (if (cdr col) col (car col))))
+   do (aset result j (if (cdr col) col (car col)))
+   finally return result))
 
 ;;;###autoload
 (defun elcron-schedule (elcron-vec function &rest args)
   "Schedule a FUNCTION call with ARGS for a given elcron expression.
 
-ELCRON-VEC is a list or vector of up to 7 elements
-\(SECONDS MINUTES HOURS DAY-OF-MONTH MONTH WEEKDAY YEAR).
+ELCRON-VEC can be a vector of up to 7 elements
+\[SECOND MINUTE HOUR DAY MONTH WEEKDAY YEAR]
+
+or a plist-list such as
+'(:hour 3 :second 10)
 
 Acceptable values are:
-- SECONDS, MINUTES: 0--59
-- HOURS: 1--12
-- DAY-OF-MONTH: 1--31
+- SECOND, MINUTE: 0--59
+- HOUR: 1--12
+- DAY: 1--31
 - MONTH: 1--12 (or jan--dec)
 - WEEKDAY: 0--6 (sun--sat)
 
 Acceptable expressions are:
-- A number in range.
+- A number in the range.
 - (- min max) to denote an inclusive range of values.
 - (/ base period) to denote periodic occurrence starting at base.
 - (EXPR EXPR EXPR) to denote multiple acceptable expressions.
@@ -518,8 +536,8 @@ Additionally, DAY-OF-MONTH can be
 
 WEEKDAY can be:
 - L: For Saturday.
-- (P weekday): For the last weekday in a month.
-- (P weekday nth): For the nth weekday in a month."
+- (# weekday): For the last weekday in a month.
+- (# weekday nth): For the nth weekday in a month."
   (let ((elcron-vector (if (stringp elcron-vec)
                          (elcron-parse elcron-vec)
                        elcron-vec))
