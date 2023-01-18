@@ -84,10 +84,6 @@ structure.
 - `:non-cyclic' if non-nil means that the field is not periodic
 \(like a year).")
 
-(defvar elcron--log-buffer nil
-  "A buffer to log elcron events.
-nil means disable logging.")
-
 (defun elcron--parse-value (x field-def)
   "Parse value X according to FIELD-DEF.
 Also checks that X is in the correct range."
@@ -432,8 +428,61 @@ day to last workday of month."
          'hour)))))
 
 (defun elcron--normalize (elcron-vec)
+  "Normalize format of ELCRON-VEC to standard elcron format.
+If it is a string, assume it is cron-like. If it is a list, it
+should a plist. Otherwise, it is assumed to be a vector and is
+returned as is.
+
+The string parser is a dump one so limited syntax checks are
+performed. In case a sub-expression cannot be parse, it is
+returned as 'ERROR.
+
+See `elcron-schedule' for details on format."
   (pcase elcron-vec
-    ((pred stringp) (elcron-parse elcron-vec))
+    ((pred stringp)
+     (cl-loop
+      with expres = (split-string elcron-vec " ")
+      for subexpr being the elements of expres using (index j)
+      with result = (make-vector (length expres) nil)
+      for col = (cl-loop
+                 for expr in (split-string subexpr ",")
+                 collect (pcase expr
+                           ((or "*" "?" "L") (intern expr))
+                           ("LW" '(W L))
+                           ((rx string-start
+                                (or
+                                 (let num (* digit))
+                                 (let str (= 3 letter)))
+                                string-end)
+                            (or (and num (string-to-number num))
+                                (intern (downcase str))))
+                           ((rx string-start
+                                (or
+                                 ""
+                                 "*"
+                                 (let num-1 (+ digit))
+                                 (let str-1 (= 3 letter)))
+                                (let sep (any "/" "-" "#"))
+                                (or (let num-2 (* digit))
+                                    (let str-2 (= 3 letter)))
+                                string-end)
+                            (list (intern sep)
+                                  (or (and num-1 (string-to-number num-1))
+                                      (and str-1 (intern (downcase str-1))))
+                                  (or (and num-2 (string-to-number num-2))
+                                      (intern (downcase str-2)))))
+                           ((rx string-start
+                                (or
+                                 (let num-1 (+ digit))
+                                 (let str-1 (= 3 letter)))
+                                (let post (or "L" "W"))
+                                string-end)
+                            (list (intern post)
+                                  (or (and num-1 (string-to-number num-1))
+                                      (and str-1 (intern (downcase str-1))))))
+                           (_ 'ERROR)))
+      do (aset result j (if (cdr col) col (car col)))
+      finally return result))
     ((pred listp) (elcron--plist-to-vector
                    elcron-vec
                    (cl-loop
@@ -463,54 +512,46 @@ See `elcron-schedule' for format of ELCRON-VEC."
    until (or (null time) (elcron--time-equal-p prev-time time))
    finally return time))
 
-(defun elcron-parse (expression)
-  "Parse a standard elcron string EXPRESSION to Lisp expression.
+(defun elcron--plist-to-vector (plist keys)
+  "Convert PLIST with KEYS to a vector."
+  (let ((plist (copy-sequence plist)))
+    (prog1 (cl-loop
+            with result = (make-vector (length keys) nil)
+            for key being the elements of keys using (index j)
+            for found = (cl-member key plist)
+            when found
+            do (progn
+                 (aset result j (cadr found))
+                 (setf (car found) nil
+                       (cadr found) nil)
+                 (when (cl-member key plist)
+                   (user-error "Duplicate keys in plist")))
+            finally return result)
+      (when (cl-notevery #'null plist)
+        (user-error "Unrecognized keys in plist")))))
 
-The parser is a dump one so limited syntax checks are performed.
-In case a sub-expression cannot be parse, it is returned as 'ERROR"
-  (cl-loop
-   with expres = (split-string expression " ")
-   for subexpr being the elements of expres using (index j)
-   with result = (make-vector (length expres) nil)
-   for col = (cl-loop
-              for expr in (split-string subexpr ",")
-              collect (pcase expr
-                        ((or "*" "?" "L") (intern expr))
-                        ("LW" '(W L))
-                        ((rx string-start
-                             (or
-                              (let num (* digit))
-                              (let str (= 3 letter)))
-                             string-end)
-                         (or (and num (string-to-number num))
-                             (intern (downcase str))))
-                        ((rx string-start
-                             (or
-                              ""
-                              "*"
-                              (let num-1 (+ digit))
-                              (let str-1 (= 3 letter)))
-                             (let sep (any "/" "-" "#"))
-                             (or (let num-2 (* digit))
-                                 (let str-2 (= 3 letter)))
-                             string-end)
-                         (list (intern sep)
-                               (or (and num-1 (string-to-number num-1))
-                                   (and str-1 (intern (downcase str-1))))
-                               (or (and num-2 (string-to-number num-2))
-                                   (intern (downcase str-2)))))
-                        ((rx string-start
-                             (or
-                              (let num-1 (+ digit))
-                              (let str-1 (= 3 letter)))
-                             (let post (or "L" "W"))
-                             string-end)
-                         (list (intern post)
-                               (or (and num-1 (string-to-number num-1))
-                                   (and str-1 (intern (downcase str-1))))))
-                        (_ 'ERROR)))
-   do (aset result j (if (cdr col) col (car col)))
-   finally return result))
+(defun elcron--schedule-next (timer elcron-vec)
+  "Set trigger time of TIMER on the next trigger of ELCRON-VEC."
+  (let ((cur-time (decode-time (time-add (current-time) 1)))
+        (elcron-vec (elcron--normalize elcron-vec)))
+    (when-let (next-time (elcron-same-or-next
+                          ;; Resolution is at least a second
+                          cur-time
+                          elcron-vec))
+      (setq next-time (encode-time next-time))
+      (unless (eq (timer--time timer) next-time)
+        (cancel-timer timer) ;; In case it was active before
+        (timer-set-time timer next-time nil)
+        (timer-activate timer)
+        t))))
+
+(defun elcron--event-handler (timer elcron-vec function args)
+  "Event handler for elcron timers.
+Calls FUNCTION with ARGS and schedules the next tigger of TIMER
+according to ELCRON-VEC."
+  (unwind-protect
+    (apply function args)
+    (elcron--schedule-next timer elcron-vec)))
 
 ;;;###autoload
 (defun elcron-schedule (elcron-vec function &rest args)
@@ -550,71 +591,6 @@ WEEKDAY can be:
                         (list timer elcron-vector function args))
     (and (elcron--schedule-next timer elcron-vector)
          timer)))
-
-(defun elcron--plist-to-vector (plist keys)
-  "Convert PLIST with KEYS to a vector."
-  (let ((plist (copy-sequence plist)))
-    (prog1 (cl-loop
-            with result = (make-vector (length keys) nil)
-            for key being the elements of keys using (index j)
-            for found = (cl-member key plist)
-            when found
-            do (progn
-                 (aset result j (cadr found))
-                 (setf (car found) nil
-                       (cadr found) nil)
-                 (when (cl-member key plist)
-                   (user-error "Duplicate keys in plist")))
-            finally return result)
-      (when (cl-notevery #'null plist)
-        (user-error "Unrecognized keys in plist")))))
-
-(defun elcron--schedule-next (timer elcron-vec)
-  "Set trigger time of TIMER on the next trigger of ELCRON-VEC."
-  ;; TODO: Is there a risk that it won't work?
-  (when (cl-every #'null elcron-vec)
-    (with-current-buffer (get-buffer-create elcron--log-buffer)
-      (goto-char (point-max))
-      (insert "TIMER: %S" timer)
-      (insert (with-temp-buffer
-                (let ((standard-output (current-buffer)))
-                  (backtrace)
-                  (buffer-string))))))
-
-  (let ((cur-time (decode-time (time-add (current-time) 1)))
-        (elcron-vec (elcron--normalize elcron-vec)))
-    (when-let (next-time (elcron-same-or-next
-                          ;; Resolution is at least a second
-                          cur-time
-                          elcron-vec))
-      (when elcron--log-buffer
-        (with-current-buffer (get-buffer-create elcron--log-buffer)
-          (goto-char (point-max))
-          (insert (format
-                   "%s Setting timer: %S -> %S ==== %S\n" (format-time-string "%d/%m/%Y %T")
-                   elcron-vec
-                   cur-time
-                   next-time))))
-      (setq next-time (encode-time next-time))
-      (unless (eq (timer--time timer) next-time)
-        (cancel-timer timer) ;; In case it was active before
-        (timer-set-time timer next-time nil)
-        (timer-activate timer)
-        t))))
-
-(defun elcron--event-handler (timer elcron-vec function args)
-  "Event handler for elcron timers.
-Calls FUNCTION with ARGS and schedules the next tigger of TIMER
-according to ELCRON-VEC."
-  (unwind-protect
-      (when elcron--log-buffer
-        (with-current-buffer (get-buffer-create elcron--log-buffer)
-        (goto-char (point-max))
-        (insert (format
-                 "%s elcron fired: %S\n" (format-time-string "%d/%m/%Y %T")
-                 function))))
-      (apply function args)
-    (elcron--schedule-next timer elcron-vec)))
 
 (provide 'elcron)
 

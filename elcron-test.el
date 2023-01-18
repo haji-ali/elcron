@@ -29,12 +29,12 @@
 
 (ert-deftest elcron-test-parser ()
   (should (equal
-           (elcron-parse "0 0/5 14,18,3-39,52 * JAN,MAR,SEP MON-FRI 2002-2011 LW")
+           (elcron--normalize "0 0/5 14,18,3-39,52 * JAN,MAR,SEP MON-FRI 2002-2011 LW")
            '[0 (/ 0 5) (14 18 (- 3 39) 52) * (jan mar sep)
                (- mon fri) (- 2002 2011) (W L)]))
 
   (should (equal
-           (elcron-parse "L 3L 3W */3 2#2 ? W LW")
+           (elcron--normalize "L 3L 3W */3 2#2 ? W LW")
            '[L (L 3) (W 3) (/ nil 3) (\# 2 2) \? ERROR (W L)])))
 
 (ert-deftest elcron-test-next ()
